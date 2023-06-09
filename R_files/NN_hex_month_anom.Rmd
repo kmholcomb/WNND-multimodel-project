@@ -1,0 +1,621 @@
+---
+title: "Neural network - hexagonal grid, logged outcomes, monthly anomalies in temp & precip, single hidden layer"
+author: "Karen Holcomb"
+output: html_document
+date: "2023-06-09"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE)
+library(sf)
+library(dplyr)
+library(tidyr)
+library(forecastML)
+library(neuralnet)
+library(ggplot2)
+library(cowplot)
+```
+
+## Set up data - hexagonal grid
+``` {r}
+start = Sys.time()
+std.dat.m <- readRDS("../data/prism_temp.precip_m_std_hex.rds")
+
+dat.clim_all <- std.dat.m[,-grep("l.1y", names(std.dat.m))] #all monthly std anomalies, no lagging here (lags in RF setup)
+
+#duplicate weather columns and rename - need both for lagging and for having as a dynamic feature in RF (impact of both lagged weather and current weather)
+dat.clim_all <- dat.clim_all[,c(1:ncol(dat.clim_all), grep("tmin|tmean|ppt", names(dat.clim_all)))]
+names(dat.clim_all) <- stringr::str_replace(names(dat.clim_all), "\\.1", "_cur") #replace the ".1" in the added col names to indicate current
+
+df_all <- readRDS("../data/WNND_hex_2005-2021.rds") 
+
+lu.df <- readRDS("../data/lu.df_hex.rds") #landuse (% urban, crops, wetlands)
+df_all <- merge(df_all, lu.df, by = "fips")
+
+#calculate climate regions
+h_clim <- readRDS("../data/h_clim_proj.rds")
+
+data <- merge(df_all, h_clim %>% as.data.frame() %>% dplyr::select(-geometry), by=c("fips")) #add in climate region
+
+data <- merge(data, dat.clim_all, by = c("fips","year")) %>% #WNND case info and climate info
+  mutate(ln_cases = log(tot_count + 1), #log count of cases per hex
+         location = as.factor(fips)) %>% #hex number ("fips") as grouping variable
+  as.data.frame() %>%
+  dplyr::select(ln_cases, location, clim.regn, year, pdens, urb:wetlands, 
+                tmean_01_std:tmean_12_std, ppt_01_std:tmean_12_std_cur,
+                ppt_01_std_cur:ppt_12_std_cur) #easier set up for RF where the outcome should be in column 1
+```
+
+## Set up data - unique dataset per climate region and prediction year (each dataset with covariates individually scaled to [0,1])
+```{r}
+### Set up group specific training and test data (climate region), with a unique data set per year
+CZ = unique(data$clim.regn)
+
+ln_cases_country <-list()
+train_country <-list()
+test_country <-list()
+pred_yrs <-list()
+
+cast_sub <-list()
+data_train <-list() #data subsets to be used for train models for each iteration
+dates <-list()
+minmax_case <- list() #nn_dat[[4]] #hold min/max ln_cases to so able to convert back from scaled values
+minmax_vars <- list() #hold min/max for other variables so scale other vars correctly (forecast lag section)
+
+scale01 <- function(x) { #min/max scaling to get numeric predictors to [0,1] scale for model
+  if(all(x == 0)) {
+    x
+  } else {
+    (x - min(x, na.rm = T)) / (max(x, na.rm = T) - min(x, na.rm = T))
+  }
+}
+
+for(i in 1:length(CZ)) { 
+  
+  ln_cases_country[[i]] <- data %>% filter(clim.regn == CZ[i]) %>%
+    arrange(year, location) %>%
+    dplyr::select(-clim.regn) %>%
+    drop_na(ln_cases) %>%
+    mutate(location = droplevels(location),
+           year=as.numeric(year),
+           date=as.Date(paste0(year,"-12-31"), format="%Y-%m-%d")
+    ) 
+  
+  #### Training data for building NN with data up to 2014
+  train_country[[i]] <- ln_cases_country[[i]] %>%
+    filter(year<=2014) %>%
+    dplyr::select(-year)
+  
+  #### Set up test data for predictions
+  test_country[[i]] <-ln_cases_country[[i]] %>%
+    filter(year>2014) %>%
+    dplyr::select(-year) 
+  
+  pred_yrs[[i]] <- 0:(nrow(test_country[[i]])/length(unique(test_country[[i]]$location))) #number of year for which predictions are needed + sets up number of training datasets 
+  
+  cast_sub[[i]] <-list()
+  data_train[[i]] <-list()
+  dates[[i]] <-list()
+  minmax_case[[i]] <- list()
+  minmax_vars[[i]] <- list()
+  
+  for (j in 1:length(pred_yrs[[i]])) {
+    
+    for (j in 1:length(pred_yrs[[i]])) {
+
+    cast_sub[[i]][[j]] <-list()
+
+    cast_sub[[i]][[j]] <-test_country[[i]] %>%
+      group_by(location) %>%
+      slice(0:pred_yrs[[i]][[j]])
+
+    data_train[[i]][[j]] <-list()
+    data_train[[i]][[j]] <- train_country[[i]] %>% #iteratively add a year of training data to predict through the years
+      bind_rows(., cast_sub[[i]][[j]])
+
+    #save original min/max scales for converting back after calculating, when scaling dynamic features for forecasting
+    minmax_case[[i]][[j]] <- data.frame(min = min(data_train[[i]][[j]]$ln_cases), max = max(data_train[[i]][[j]]$ln_cases))
+
+    minmax_vars[[i]][[j]] <- lapply(grep("_cur", names(data_train[[i]][[j]])),
+                                    function(x) c(range(data_train[[i]][[j]][,x]))) #other var ranges (not ln_case, location)
+    names(minmax_vars[[i]][[j]]) <- names(data_train[[i]][[j]])[grep("_cur", names(data_train[[i]][[j]]))]
+
+    #add variables for history of cases - median # cases for each year in the training period (value for up through prev year)
+    data_train[[i]][[j]]  <- data_train[[i]][[j]] %>% group_by(location) %>% 
+      mutate(medCases = sapply(1:length(ln_cases), function(y) median(ln_cases[0:(y-1)]))) %>% ungroup()
+    
+    dates[[i]][[j]] <-list()
+    dates[[i]][[j]] <- data_train[[i]][[j]]$date
+    data_train[[i]][[j]] <- data_train[[i]][[j]] %>% dplyr::select(-date) %>%
+      mutate(across(-location, scale01)) #this is the final training dataset that the NN models will use for predictions
+    }
+  }
+  
+```
+
+## Train models - create climate region specific NN models to use for prediction
+```{r}
+#Train models
+# Train models per subset of data (<2014 + i, each year after)
+model_results <- list() #store trained NN models
+data_valid <- list() #check trained models against reported data
+
+# Settings for time series, using function from forecastML package
+dynamic_features <- c("ln_cases_cur", "tmean.w_std_cur", "tmean.sp_std_cur", "tmean.su_std_cur", "tmean.f_std_cur", 
+                      "ppt.w_std_cur", "ppt.sp_std_cur", "ppt.su_std_cur", "ppt.f_std_cur") #time varying, but should not be lagged - current year's weather 
+static_features <- c("pdens", "urb", "crops", "wetlands", "medCases") #doesn't change over time
+groups <- c("location") #nesting/grouping variables should be here (group time series together)
+horizons <- as.numeric(c(1)) #number of horizons for predictions (number of years ahead predicting)
+date_frequency <- "1 year" #time scale of data
+
+nreps = 250 #number of ensemble members per NN fit
+
+for(i in 1:length(CZ)) {
+  print(i)
+  # data_train_lag[[i]] <-list()
+  model_results[[i]] <-list()
+  data_valid[[i]] <-list()
+
+  for (j in 1:length(pred_yrs[[i]])) {
+    
+    data_train_lag[[i]][[j]] <-list()
+    data_train_lag[[i]][[j]] <- forecastML::create_lagged_df(data_train[[i]][[j]],
+                                                             type = "train", method = "direct", 
+                                                             outcome_col = 1, 
+                                                             lookback_control = list(c(1:5), 0, 0, 0, 0, 0, #lag outcome 1-5, no lagging static
+                                                                                     c(1:5), c(1:5), c(1:5), c(1:5), c(1:5), c(1:5), c(1:5), c(1:5),
+                                                                                     c(1:5), c(1:5), c(1:5), c(1:5), c(1:5), c(1:5), c(1:5), c(1:5),
+                                                                                     c(1:5), c(1:5), c(1:5), c(1:5), c(1:5), c(1:5), c(1:5), c(1:5), #weather lag 1-2
+                                                                                     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                                                                                     0, 0, 0, 0, 0, 0, 0, 0, 0), #no lag current weather or median cases
+                                                             horizons = horizons,
+                                                             dates = dates[[i]][[j]],
+                                                             frequency = date_frequency,
+                                                             dynamic_features = dynamic_features,
+                                                             static_features = static_features,
+                                                             groups = groups)
+    
+    #### Creating the NN model
+    model_results[[i]][[j]] <-list()
+    data_train_df <- data_train_lag[[i]][[j]]$horizon_1 #just df for model syntax
+
+    #only complete data for model training (update dates()) too to correspond
+    na_dates <- which(is.na(data_train_df$ln_cases_lag_5)) #which rows w/o complete obs (NA in lagged vars)
+    dtl_scaled <- data_train_df[-na_dates,]
+    
+    n <- names(dtl_scaled)[-grep("location|ln_cases_cur", names(dtl_scaled))]
+    model_formula <- formula(paste0("ln_cases ~ ", paste(n[!n %in% c("ln_cases")], collapse = "+"))) #NN formula (outcome regressed on all variables in dataframe)
+
+    model_results[[i]][[j]] <- neuralnet(model_formula, data=dtl_scaled,
+                                         hidden = floor(sqrt(length(n)-1)), linear.output = TRUE,
+                                         algorithm = "rprop+", err.fct = "sse", act.fct = "logistic",
+                                         rep = nreps, stepmax = 1e6)
+    
+    #### Checking trained predictions against observations and estimate residuals
+    data_valid[[i]][[j]] <-list()
+    dv <- do.call(cbind.data.frame, model_results[[i]][[j]]$net.result)
+    names(dv)[grep("structure", names(dv))] <- paste0("rep", 1:nreps) #rename each column for each ensemble member
+    data_valid[[i]][[j]] <- cbind(dv, date = attributes(data_train_lag[[i]][[j]])$date_indices[-na_dates], 
+                                  location = dtl_scaled$location, #add in dates, location
+                                  ln_cases_scaled = dtl_scaled$ln_cases) %>% #add in obs cases
+      pivot_longer(cols = starts_with("rep"), names_to = "rep_num", values_to = "fit_ln_scaled") %>%
+      mutate(residual = ln_cases_scaled - fit_ln_scaled, #training residuals, pos: too low, neg: too high (on scaled scale)
+             fit_ln = fit_ln_scaled * (minmax_case[[i]][[j]]$max - minmax_case[[i]][[j]]$min) + minmax_case[[i]][[j]]$min, #ln scale
+             orig_ln = ln_cases_scaled * (minmax_case[[i]][[j]]$max - minmax_case[[i]][[j]]$min) + minmax_case[[i]][[j]]$min)
+  }
+}
+
+```
+
+## In-sample RMSE, MAD of trained models (per ensemble member and all members together)
+### Plots and tables of metrics by climate region (and year)
+```{r}
+clim_loop <- lapply(1:length(data_valid), function(x) { #per climate region
+  yr_loop <- lapply(1:length(data_valid[[x]]), function(y) {
+    data_valid[[x]][[y]] %>% group_by(rep_num) %>%
+      summarise(rmse = sqrt(mean((fit_ln - orig_ln)^2)),
+                mad = mean(abs(fit_ln - orig_ln))) %>%
+      mutate(last_yr_fit = max(data_valid[[x]][[y]]$date),
+             clim.regn = CZ[x])
+  })
+  do.call(rbind.data.frame, yr_loop)
+})
+
+insamp_fit <- do.call(rbind.data.frame, clim_loop)
+
+
+clim_loop_all <- lapply(1:length(data_valid), function(x) { #per clim region -> find overall RMSE, MAD for each trained model (all ensembles together)
+  yr_loop <- lapply(1:length(data_valid[[x]]), function(y) {
+    data_valid[[x]][[y]] %>% 
+      summarise(rmse = sqrt(mean((fit_ln - orig_ln)^2)),
+                mad = mean(abs(fit_ln - orig_ln))) %>%
+      mutate(last_yr_fit = max(data_valid[[x]][[y]]$date),
+             clim.regn = CZ[x])
+  })
+  do.call(rbind.data.frame, yr_loop)
+})
+
+insamp_fit_all <- do.call(rbind.data.frame, clim_loop_all)
+
+ggplot(insamp_fit) +
+  geom_point(aes(x=last_yr_fit-365, y=rmse, color="black")) + facet_wrap(~clim.regn) + #year shifted for plotting so 12/31 doesn't look like next year
+  geom_point(data=insamp_fit_all, aes(x=last_yr_fit-365, y=rmse, color="red")) +
+  scale_color_manual(NULL, values=c("black", "red"), labels = c("ensmeble member", "all members")) +
+  labs(y="RMSE per trained model (ln_cases scale, all locations per esemble member)", x="last year in trained model", 
+       title = "in-sample RMSE") +
+  theme(legend.position = "bottom")
+
+tapply(insamp_fit_all$rmse, list(insamp_fit_all$clim.regn, insamp_fit_all$last_yr_fit), mean) #RMSE per climate rgion and year
+tapply(insamp_fit_all$rmse, list(insamp_fit_all$clim.regn), mean) #RMSE per climate region
+
+ggplot(insamp_fit) +
+  geom_point(aes(x=last_yr_fit-365, y=mad, color="black")) + facet_wrap(~clim.regn) +
+  geom_point(data=insamp_fit_all, aes(x=last_yr_fit-365, y=mad, color="red")) +
+  scale_color_manual(NULL, values=c("black", "red"), labels = c("ensmeble member", "all members")) +
+  labs(y="MAD per trained model (ln_cases scale, all locations per esemble member)", x="last year in trained model", 
+       title = "in-sample MAD") +
+  theme(legend.position = "bottom")
+
+tapply(insamp_fit_all$mad, list(insamp_fit_all$clim.regn, insamp_fit_all$last_yr_fit), mean) #mean absolute error by year and climate region
+tapply(insamp_fit_all$mad, list(insamp_fit_all$clim.regn), mean) #mean absoluter value by climate region
+```
+
+
+## Variable importance using connection weights
+```{r}
+#Connection weights for importance
+cw_list <- do.call(rbind.data.frame, lapply(1:length(model_results), function(x) { #for each clim region
+  pyloop <- lapply(1:length(model_results[[x]]), function(y) { #for each chunk of years trained
+    eloop <- lapply(1:length(model_results[[x]][[y]]$weights), function(z) { #each rep/ensemble model trained
+      if(z == 1) {
+        NeuralNetTools::olden(model_results[[x]][[y]], bar_plot=FALSE) %>% #pulls first rep
+          mutate(var = rownames(.), 
+                 abs_imp = abs(importance), #all to same side
+                 rel_imp = abs_imp/max(abs_imp), #all on 0-1 scale for comparing
+                 dir = sign(importance), #neg/pos/0 direction of impact
+                 ens = z) %>% #ensemble member
+          arrange(desc(rel_imp)) %>% mutate(imp_ord = 1:n()) #arrange by relative importance, ordering (1 is most important/impactful)
+      } else {
+        wt_list <- NeuralNetTools::neuralweights(model_results[[x]][[y]]) #set-up list for using weights from first rep, use as template to fill with other weights
+        for(m in 1:length(wt_list$wts)) {
+          if(m < length(wt_list$wts)) {
+            wt_list$wts[[m]] <- model_results[[x]][[y]]$weights[[z]][[1]][,m] #weights from input to first...last hidden node
+          } else {
+            wt_list$wts[[m]] <- as.vector(model_results[[x]][[y]]$weights[[z]][[2]]) #weights from hidden to output node
+          }
+        }
+        NeuralNetTools::olden(mod_in = wt_list$wts, struct = wt_list$struct, x_names = model_results[[x]][[y]]$model.list$variables, 
+                              y_names = "Importance", bar_plot = FALSE) %>% #run olden function using weight list for non-first reps, pull names
+          mutate(var = rownames(.), 
+                 abs_imp = abs(importance), #all to same side
+                 rel_imp = abs_imp/max(abs_imp), #all on 0-1 scale for comparing
+                 dir = sign(importance), #neg/pos/0 direction of impact
+                 ens = z) %>% #ensemble member
+          arrange(desc(rel_imp)) %>% mutate(imp_ord = 1:n()) #arrange by relative importance, ordering (1 is most important/impactful)
+      }
+    })
+    do.call(rbind.data.frame, eloop) %>% #all together for that ensemble
+      mutate(last_yr_fit = max(data_valid[[x]][[y]]$date), #add on last year of training data and climate region, for tracking
+             clim.regn = CZ[x])
+  })
+  do.call(rbind.data.frame, pyloop)
+}))
+
+
+med_imp_yr <- cw_list %>% group_by(clim.regn, last_yr_fit, var) %>% #median importance per year, direction of association
+  summarise(m_rel_imp = median(rel_imp),
+            m_imp_ord = median(imp_ord),
+            av_rel_imp = mean(rel_imp),
+            av_imp_ord = mean(imp_ord),
+            m_dir = median(dir), #median direction: 1, 0, -1
+            prop_dir_pos = length(which(dir == 1))/n(), #prop of ensembles with positive connection weight for that variable
+            dir_pos_pval = ifelse(length(table(dir)) == 1, 1, prop.test(table(dir))$p.value)) %>% ungroup() #p-value from Pearson's chi-sq test
+
+med_imp_all <- cw_list %>% group_by(clim.regn, var) %>% #median importance across years, direction of association
+  summarise(m_rel_imp = median(rel_imp),
+            m_imp_ord = median(imp_ord),
+            av_rel_imp = mean(rel_imp),
+            av_imp_ord = mean(imp_ord),
+            m_dir = median(dir),
+            prop_dir_pos = length(which(dir == 1))/n(), #prop of ensembles with positive connection weight for that variable
+            dir_pos_pval = ifelse(length(table(dir)) == 1, 1, prop.test(table(dir))$p.value)) %>% ungroup() #p-value from Pearson's chi-sq test
+
+```
+
+
+```{r}
+#large class/grouping of variables for comparison across climate regions
+
+var_group_fun <- function(var_vect) {
+  a <- stringr::str_split(var_vect, "_", simplify = T) #matrix of variable names split by _
+  sapply(1:nrow(a), function(x) {
+     nz = which(a[x,] != "") #which indices with names
+     if(length(nz) == 1) { #if single name (like location, totpop), just that
+       nm = a[x,nz]
+       if(nchar(nm) > 8) { substr(nm, 1,8) } else nm
+       } else {
+         f = stringr::str_split(a[x, head(nz,1)], "[.]", simplify = T)[1] #first entry, sometimes has a . in name so want to remove
+         if("nb" %in% a[x,]) f = paste(f,"nb",sep="") #add indicator if logged cases were neighbors
+         paste(f, a[x,tail(nz,1)], sep = "-") #concatenate thing (tmean, precip, tmin) with lag (cur, 1-5)
+         }
+     })
+}
+
+short_var_group <- function(var_group) {
+  ifelse(var_group == "location", "location",
+         ifelse(var_group %in% c("ln-1","ln-2","ln-3","ln-4","ln-5", "ln-cur", "neverCas", "medCases"), "WNND cases",
+                ifelse(var_group %in% c("crops","urb","wetlands"), "Land use",
+                       ifelse(var_group %in% c("totpop","pop65","pdens"), "Demographics",
+                              ifelse(var_group %in% c("ppt-1", "ppt-2", "ppt-3", "ppt-4", "ppt-5", "ppt-cur"), "Precipitation", 
+                                     ifelse(var_group %in% c("tmin-1", "tmin-2", "tmin-3", "tmin-4", "tmin-5", "tmin-cur"),
+                                            "tmin", "Mean temperature"))))))
+}
+
+med_imp_all$var_group <- var_group_fun(med_imp_all$var)
+med_imp_yr$var_group <- var_group_fun(med_imp_yr$var)
+
+med_imp_all$plot_var <- short_var_group(med_imp_all$var_group)
+med_imp_yr$plot_var <- short_var_group(med_imp_yr$var_group)
+
+
+med_imp_all$clim.regn_plot <- as.numeric(factor(med_imp_all$clim.regn, levels = c("Northwest", "NRockiesandPlains",
+                                                                                  "UpperMidwest", "OhioValley",
+                                                                                  "Northeast", "West", "Southwest",
+                                                                                  "South", "Southeast")))
+med_imp_yr$clim.regn_plot <- as.numeric(factor(med_imp_yr$clim.regn, levels = c("Northwest", "NRockiesandPlains",
+                                                                                  "UpperMidwest", "OhioValley",
+                                                                                  "Northeast", "West", "Southwest",
+                                                                                  "South", "Southeast")))
+
+region_full = c("1"="Northwest", "2"="NRockiesandPlains", "3"="Upper Midwest", "4"="Ohio Valley", "5"="Northeast",
+                "6"="West", "7"="Southwest", "8"="South", "9"="Southeast")
+
+
+ggplot(med_imp_yr) + 
+  geom_point(aes(x=m_imp_ord, y=m_rel_imp, color=factor(plot_var)), alpha=0.5) + facet_wrap(~clim.regn) +
+  labs(title = "Relative importance of variables across years (median per ensemble) - connection weights", 
+       x="order of importance (descreasing)",
+       y="relative magnitude of importance (scaled |connection weights|)", color="type of variable")
+
+ggplot(med_imp_yr) + 
+    geom_point(aes(x=m_imp_ord, y=prop_dir_pos, color=factor(plot_var)), alpha=0.5) + facet_wrap(~clim.regn) +
+    labs(title = "Proportion of postive direction of importance across years (median per ensemble) - connection weights", 
+         x="order of importance (descreasing)",
+         y="proportion of postive connection weights across ensembles", color="type of variable")
+
+ 
+ggplot(med_imp_all) +
+    geom_point(aes(x=var_group, y=-1*m_imp_ord, color=plot_var)) + facet_wrap(~clim.regn) +
+    labs(title = "Median order of importance for each variable across all ensembles", x = "variable group (var-lag)",
+         y = "median order of importance (descending)", color = "type of variable") +
+    scale_y_continuous(breaks = c(-1, seq(-10, -90, by=-10)), labels = c(1, seq(10, 90, by=10))) +
+    theme(axis.text.x = element_text(angle=90, hjust=1, vjust=0.5), legend.position = "bottom")
+
+
+ggplot(med_imp_all) +
+    geom_point(aes(x=var_group, y=m_rel_imp, color=plot_var)) + facet_wrap(~clim.regn) +
+    labs(title = "Median relative magnitude of importance for each variable across all ensembles", 
+         x = "variable group (var-lag)",
+         y = "median relative importance (scaled connection weights)", color = "type of variable") +
+    theme(axis.text.x = element_text(angle=90, hjust=1, vjust=0.5), legend.position = "bottom")
+```
+
+
+## Forecast models usig trained NNs
+### plot forecasts with 95% intervals
+```{r}
+forecasts <- list()
+boot_samples <- list()
+boot_pred_q <- list()
+
+bootnum = 1000 #number of bootstrapped samples to get for PI and probability estimation (ensemble member prediction + training residual for that location)
+
+for(i in 1:length(CZ)) {
+  print(i)
+  data_forecast_lag[[i]] <-list()
+  forecasts[[i]] <-list()
+  
+  for (j in 1:(length(pred_yrs[[i]]))) {
+    
+    # Set up forecasting dataframe
+    data_forecast_lag[[i]][[j]] <- forecastML::create_lagged_df(data_train[[i]][[j]],
+                                                                type = "forecast", method = "direct",
+                                                                outcome_col = 1,
+                                                                lookback_control = list(c(1:5), 0, 0, 0, 0, 0, #lag outcome 1-5, no lagging static
+                                                                                     c(1:5), c(1:5), c(1:5), c(1:5), c(1:5), c(1:5), c(1:5), c(1:5),
+                                                                                     c(1:5), c(1:5), c(1:5), c(1:5), c(1:5), c(1:5), c(1:5), c(1:5),
+                                                                                     c(1:5), c(1:5), c(1:5), c(1:5), c(1:5), c(1:5), c(1:5), c(1:5), #weather lag 1-2
+                                                                                     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                                                                                     0, 0, 0, 0, 0, 0, 0, 0, 0), #no lag current weather or median cases
+                                                                horizons = horizons,
+                                                                dates = dates[[i]][[j]],
+                                                                frequency = date_frequency,
+                                                                dynamic_features = dynamic_features,
+                                                                static_features = static_features,
+                                                                groups = groups)
+    for(k in 1:length(data_forecast_lag[[i]][[j]])) { #need to fix current year weather, NAs from function -> Remenber the SCALE!
+      m = unique(data_forecast_lag[[i]][[j]][[k]]$index) #which year(s) are predicted
+      cdat <- ln_cases_country[[i]][ln_cases_country[[i]]$date %in% m, 
+                                    c(2, ncol(ln_cases_country[[i]]), grep("_cur", names(ln_cases_country[[i]])))] #location and current weather for prediction year(s)
+      
+      #correct scale of current weather variables -> use min/max for vars from data_train[[i]][[j]]
+      wcol <- grep("_cur", names(cdat)) #columns with weather data
+      cdat[, wcol] <- lapply(wcol, function(x) {
+        minmax = minmax_vars[[i]][[j]][[names(cdat)[x]]] #min/max of corresponding variable
+        (cdat[,x] - minmax[1]) / diff(minmax)
+      })
+      
+      odat <- data_forecast_lag[[i]][[j]][[k]][,-grep("_cur", names(data_forecast_lag[[i]][[j]][[k]]))] #drop current weather columns so merge correctly
+      data_forecast_lag[[i]][[j]][[k]] <- left_join(odat, cdat, by = c("location","index"="date"))
+    }
+    
+    # Make predictions from trained models
+    forecasts[[i]][[j]] <-list()
+    boot_samples[[i]][[j]] <- list()
+    boot_pred_q[[i]][[j]] <- list()
+    data_forecast_df <- data_forecast_lag[[i]][[j]]$horizon_1 #just df for model syntax
+
+    dfl_scaled <- data_forecast_df %>% select(-index, -horizon)
+
+    preds <- lapply(1:nreps, function(x) { #for each rep (ensemble member) in trained model
+      as.vector(predict(model_results[[i]][[j]], newdata=dfl_scaled, rep=x))
+    })
+
+    forecasts[[i]][[j]] <- cbind(data_forecast_df[,c("index","location")], preds) #add predictions to df
+    names(forecasts[[i]][[j]])[3:ncol(forecasts[[i]][[j]])] <- paste0("pred", 1:nreps)
+
+    forecasts[[i]][[j]] <- forecasts[[i]][[j]] %>%
+      pivot_longer(cols = starts_with("pred"), names_to = "pred_num", values_to = "pred_lncases_scaled") %>%
+      mutate(clim.regn = CZ[i],
+             pred_lncases = pred_lncases_scaled * (minmax_case[[i]][[j]]$max - minmax_case[[i]][[j]]$min) +
+               minmax_case[[i]][[j]]$min) %>% #convert scaled to original range
+      left_join(., ln_cases_country[[i]] %>% dplyr::select(ln_cases, location, date, year), by=c("location","index"="date"))
+
+    boot_samples[[i]][[j]] <- do.call(rbind.data.frame, lapply(unique(forecasts[[i]][[j]]$location), function(x) { #get bootnum samples
+      ens <- sample(forecasts[[i]][[j]]$pred_lncases_scaled[forecasts[[i]][[j]]$location == x], size=bootnum, replace = TRUE) #random sample of ensemble member predictions
+      res <- sample(data_valid[[i]][[j]]$residual[data_valid[[i]][[j]]$location == x], size=bootnum, replace = TRUE) #random sample of residuals from training all ensemble members
+      data.frame(index = unique(forecasts[[i]][[j]]$index), location = x, bootpred_lnscaled = pmax(0, ens + res)) #date, location, bootstrapped samples, replace negatives with 0
+    }))  %>%
+      mutate(clim.regn = CZ[i],
+             pred_lncases = bootpred_lnscaled * (minmax_case[[i]][[j]]$max - minmax_case[[i]][[j]]$min) + minmax_case[[i]][[j]]$min, #convert scaled to original range
+             pred_cases = round(exp(pred_lncases) - 1)) %>% #back to integer cases
+      left_join(., ln_cases_country[[i]] %>% dplyr::select(ln_cases, location, date, year), by=c("location","index"="date"))
+
+    boot_pred_q[[i]][[j]] <- boot_samples[[i]][[j]] %>% group_by(location, clim.regn) %>%
+      summarise(pln50 = quantile(pred_lncases, 0.5, na.rm=TRUE), #mean of bootstrap samples
+                PI_l50 = quantile(pred_lncases, 0.25, na.rm=TRUE), #50% quantiles from bootstrapped predictions (ln case scale) for PI
+                PI_u50 = quantile(pred_lncases, 0.75, na.rm=TRUE),
+                PI_l95 = quantile(pred_lncases, 0.025, na.rm=TRUE), #95% quantiles from bootstrapped predictions (ln case scale) for PI
+                PI_u95 = quantile(pred_lncases, 0.975, na.rm=TRUE)) %>% ungroup()
+    }
+  }
+
+ens_preds <- lapply(1:length(forecasts), function(l) { #capture distribution of predictions across ensemble members
+  floop <- lapply(1:7, function(x) { #NOT for 2022 (l=8) since no case data for that year to compare
+    forecasts[[l]][[x]] %>% group_by(location, clim.regn, year, ln_cases) %>% 
+      summarise(m_plncs = median(pred_lncases_scaled), 
+                m_pln = median(pred_lncases)) %>%
+      ungroup() %>% left_join(., boot_pred_q[[l]][[x]], by=c("location", "clim.regn"))
+  })
+}) 
+
+
+sapply(1:length(ens_preds), function(l) {
+  pd <- do.call(rbind.data.frame, ens_preds[[l]])
+  print(ggplot(pd) + 
+          geom_ribbon(aes(x=year, ymin=l95, ymax=u95), fill="coral", alpha=0.1) +
+          geom_line(aes(x=year, y=m_pln), color="coral") +  
+          geom_line(aes(x=year, y=ln_cases, group=location), color="black") + 
+          facet_wrap(~location, scales = "free_y") + theme_minimal(8) + 
+          labs(title = paste(CZ[l], "- model predictions (median with 95% PI)"), y="ln_cases"))
+})
+
+```
+
+## Calculate out-of-sample RMSE, MAD (median of predictions from ensemble members per model)
+### Plots and tables of metrics by climate region (and year)
+```{r}
+clim_loop2 <- lapply(1:length(forecasts), function(x) {
+  yr_loop <- lapply(1:7, function(y) { #NOT for 2022 (l=8) since no case data for that year to compare
+    forecasts[[x]][[y]] %>% group_by(year, clim.regn) %>%
+      summarise(rmse = sqrt(mean((pred_lncases - ln_cases)^2)),
+                mad = mean(abs(pred_lncases - ln_cases)))
+  })
+  do.call(rbind.data.frame, yr_loop)
+})
+
+outsamp_fit <- do.call(rbind.data.frame, clim_loop2)
+
+
+ggplot(outsamp_fit) +
+  geom_point(aes(x=year, y=rmse)) + facet_wrap(~clim.regn) +
+  labs(y="RMSE per trained model (ln_cases scale)", x="prediction year", title = "out-of-sample RMSE")
+ 
+tapply(outsamp_fit$rmse, list(outsamp_fit$clim.regn, outsamp_fit$year), mean) #rmse of year and climate region
+tapply(outsamp_fit$rmse, outsamp_fit$clim.regn, mean) #rmse of climate region for all years
+
+ggplot(outsamp_fit) +
+  geom_point(aes(x=year, y=mad)) + facet_wrap(~clim.regn) +
+  labs(y="MAD per trained model (ln_cases scale)", x="prediction year", title = "out-of-sample MAD")
+
+tapply(outsamp_fit$mad, list(outsamp_fit$clim.regn, outsamp_fit$year), mean) #mean absolute errorr by year and climate region
+tapply(outsamp_fit$mad, outsamp_fit$clim.regn, mean) #mean absolute error by climate region for all years
+
+```
+
+## Calculate log scores based on predicted case counts from bootstrapped samples
+### take quantiles of bootstrapped samples -> fit a negative binomial distribution -> determine probability assigned to observed number of cases
+```{r}
+#logscore calculations - bootstrapped -> prob vs NB/density
+q23 <- c(0.01, 0.025, seq(0.05, 0.95, by = 0.05), 0.975, 0.99)
+quant_to_nbinom <- function(quants, values) {
+  if (any(values < 0)) stop('Values for negatitve binomial must be >= 0')
+  if (any(duplicated(quants))) stop('Repeated quantiles')
+  # select reasonable start values
+  start <- c(size = 1, mu = mean(values))
+  
+  nbinom_optim_fn <- function(par, quants, values) {
+    tryCatch(
+      { 
+        quants_theo_hi <- pnbinom(values, size=par[[1]], mu=par[[2]])
+        quants_theo_lo <- pnbinom(values - 1, size=par[[1]], mu=par[[2]])
+        sum((pmin(quants_theo_hi, quants) - pmax(quants_theo_lo, quants))^2)
+      },
+      warning = function(w) {
+        NaN
+      }
+    )
+  }
+  opt_par <- optim(par = start, fn = nbinom_optim_fn, quants=quants, values=values)$par
+  return(list(mu=opt_par[['mu']], size=opt_par[['size']]))
+}
+
+obs <- readRDS("df_hex.rds") %>% rename(location = fips) #observed number of cases
+ls_preds <- do.call(rbind.data.frame, lapply(seq_along(boot_samples), function(i) {
+  ploop <- lapply(1:7, function(j) { #not doing 2022 (8) when no observations
+    bc <- boot_samples[[i]][[j]] %>% mutate(location = as.numeric(as.character(location)),
+                                            pred_cases = round(exp(pred_lncases) - 1)) %>% #back to integer cases
+      left_join(., obs, by = c("year","location")) 
+    
+    #quantiles -> NB -> logscore
+    logscore_nb <- sapply(unique(bc$location), function(x) {
+      fit_pars <- quant_to_nbinom(quants = q23, values = quantile(bc$pred_cases[bc$location == x], q23)) #parmeters to fit NB based on quantiles
+      o_count <- unique(bc$tot_count[bc$location == x])
+      
+      p_count <- pnbinom(o_count, mu = fit_pars[["mu"]], size = fit_pars[["size"]], lower.tail = TRUE) - #prob of less than equal to obs cases
+        pnbinom(o_count-1, mu = fit_pars[["mu"]], size = fit_pars[["size"]], lower.tail = TRUE) #prob of less than eqaul to obs cases - 1
+      pmax(-10, log(p_count)) #probability to logscore, using quantiles and NB distribution
+    })
+    
+    logscore_nb
+  })
+  do.call(rbind.data.frame, ploop)
+}))
+
+yr_ls <- ls_preds %>% 
+  group_by(clim.regn, year) %>% summarise(m_ls_nb = mean(logscore_nb)) %>% 
+  pivot_longer(m_ls_nb, names_to="version", values_to = "m_logscore")
+
+ggplot(yr_ls) +
+    geom_violin(aes(x=clim.regn, y=m_logscore, group=interaction(version, clim.regn)), 
+                draw_quantiles = c(0.25,0.5,0.75)) +
+    labs(x="climate region", y="mean logscore (per year)") + theme(legend.position = "bottom")
+
+ls_preds %>% group_by(clim.regn) %>% summarise(m_ls_nb = mean(logscore_nb)) 
+```
+
+
+```{r}
+#save results for later using
+aveRDS(list(data_valid=data_valid, insamp_fit=insamp_fit, insamp_fit_all=insamp_fit_all, ens_preds=ens_preds,
+            outsamp_fit=outsamp_fit, cw_list=cw_list, ls_preds = ls_preds, boot_samples = boot_samples,
+            model_results=model_results), "../data/NN_list_month.rds")
+
+```
+
+
+Run time of knitting RMD
+```{r}
+end <- Sys.time()
+end - start
+```
