@@ -7,7 +7,7 @@
 # https://www.census.gov/data/tables/time-series/demo/popest/2010s-counties-detail.html#par_textimage_1383669527
 ###
 
-census <-read.csv('~/cc-est2018-alldata.csv') #census data
+census <-read.csv('../data/cc-est2018-alldata.csv') #census data
 pop <- census[,c("STATE","COUNTY","STNAME","CTYNAME","YEAR","AGEGRP","TOT_POP")]
 names(pop) <- tolower(names(pop))
 pop$geoid <- paste0(sprintf("%02d", as.numeric(pop$state)), sprintf("%03d", as.numeric(pop$county))) #5 digit FIPS code, needed for merging with WNV case data

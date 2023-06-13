@@ -12,7 +12,7 @@ library(dplyr)
 library(sf)
 library(tigris)
 
-lc <- raster::raster("~/nlcd_2011_landcover_2011_edition_2014_10_10/nlcd_2011_landcover_2011_edition_2014_10_10.img") #image to raster
+lc <- raster::raster("../data/nlcd_2011_landcover_2011_edition_2014_10_10/nlcd_2011_landcover_2011_edition_2014_10_10.img") #image to raster
 cts <- tigris::counties(state = unique(fips_codes$state[!fips_codes$state %in% c("AK","HI","PR","AS","GU","MP","UM","VI")]),
                         resolution = "20m", class="sf") %>% st_transform(., st_crs(lc)) #same proj as lc raster
 h <- st_make_grid(cts, cellsize = 2e5, square=FALSE) #hexagonal grid, cell size in m^2

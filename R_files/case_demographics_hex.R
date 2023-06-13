@@ -3,7 +3,7 @@
 # Last Updated: June 2, 2023
 ##
 # Process West Nile virus neuroinvasive disease (WNND) case data and census data from county to hexagon
-# Data allocated based on 
+# County-level data assigned to hexagons by overlapping county centroids
 ###
 
 library(tidyr)
@@ -12,8 +12,8 @@ library(sf)
 library(tigris)
 options(tigris_use_cache = TRUE)
 
-#2000-2021 WNV counts - researchers can request it from ArboNET by emailing dvbid2@cdc.gov
-df_all <- read.csv("NeuroWNV_by_county_2000-2021FULL.csv", header=T) %>%
+#2005-2021 WNV counts - researchers can request it from ArboNET by emailing dvbid2@cdc.gov
+df_all <- read.csv("../data/NeuroWNV_by_county_2005-2021FULL.csv", header=T) %>%
   mutate(fips = sprintf("%05d", fips))
 
 #counties shapefile
@@ -46,7 +46,7 @@ sums_df <- lapply(seq_along(b), function(x) {
              geometry = list(h_cts[[x]])) %>%
       st_as_sf(sf_column_name = "geometry", crs = st_crs(h_cts)) #add sfc polygon, sf object
   } else {
-    data.frame(year = 2000:2021, tot_count = NA, totpop = NA, pop65 = NA, pdens = NA) %>% #NA counts if no centroid 
+    data.frame(year = 2005:2021, tot_count = NA, totpop = NA, pop65 = NA, pdens = NA) %>% #NA counts if no centroid 
       mutate(geometry = list(h_cts[[x]])) %>%
       st_as_sf(sf_column_name = "geometry", crs = st_crs(h_cts)) #add sfc polygon, sf object
   }
@@ -55,7 +55,6 @@ sums_df <- lapply(seq_along(b), function(x) {
 sd_all <- do.call(rbind, sums_df) #all hexagons with data together
 sd_all$fips <- rep(1:290, each=22) #add "fips" column for matching hex dat from climate and land use (fips == hex number)
 
-sd_all <- sd_all %>% subset(!is.na(tot_count) & #remove hexagons w/o data (ones that no county centroid overlaps - internal or coastal)
-                              year >= 2005) #drop invasive years
+sd_all <- sd_all %>% subset(!is.na(tot_count)) #remove hexagons w/o data (ones that no county centroid overlaps - internal or coastal)
 
 saveRDS(sd_all, "../data/WNND_hex_2005-2021.rds") #R object with cases, pop per hex

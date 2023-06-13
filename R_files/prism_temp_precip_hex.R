@@ -27,9 +27,9 @@ ym <- rbind(c("12", 1998), ym) #add Dec of 1998 for seasonal calculations
 #mean temperature
 yr.stack_t <- lapply(1:nrow(ym), function(x) {
   if(ym$Var2[x] == 2021 & (ym$Var1[x] %in% c("10","11","12"))) {
-    raster(paste('~/PRISM_monthly/', ym[x,"Var2"],'/PRISM_tmean_provisional_4kmM3_', ym[x,"Var2"], ym[x,"Var1"],'_bil.bil',sep="")) 
+    raster(paste('../data/PRISM_monthly/', ym[x,"Var2"],'/PRISM_tmean_provisional_4kmM3_', ym[x,"Var2"], ym[x,"Var1"],'_bil.bil',sep="")) 
   } else {
-    raster(paste('~/PRISM_monthly/', ym[x,"Var2"],'/PRISM_tmean_stable_4kmM3_', ym[x,"Var2"], ym[x,"Var1"],'_bil.bil',sep="")) 
+    raster(paste('../data/PRISM_monthly/', ym[x,"Var2"],'/PRISM_tmean_stable_4kmM3_', ym[x,"Var2"], ym[x,"Var1"],'_bil.bil',sep="")) 
   }
 })
 yr.stack_t <- stack(yr.stack_t) #stack list of rasters
@@ -37,9 +37,9 @@ yr.stack_t <- stack(yr.stack_t) #stack list of rasters
 #min temperature
 yr.stack_tn <- lapply(1:nrow(ym), function(x) {
   if(ym$Var2[x] == 2021 & (ym$Var1[x] %in% c("10","11","12"))) {
-    raster(paste('~/PRISM_monthly/', ym[x,"Var2"],'/PRISM_tmin_provisional_4kmM3_', ym[x,"Var2"], ym[x,"Var1"],'_bil.bil',sep=""))
+    raster(paste('../data/PRISM_monthly/', ym[x,"Var2"],'/PRISM_tmin_provisional_4kmM3_', ym[x,"Var2"], ym[x,"Var1"],'_bil.bil',sep=""))
   } else {
-    raster(paste('~/PRISM_monthly/', ym[x,"Var2"],'/PRISM_tmin_stable_4kmM3_', ym[x,"Var2"], ym[x,"Var1"],'_bil.bil',sep="")) 
+    raster(paste('../data/PRISM_monthly/', ym[x,"Var2"],'/PRISM_tmin_stable_4kmM3_', ym[x,"Var2"], ym[x,"Var1"],'_bil.bil',sep="")) 
   }
 })
 yr.stack_tn <- stack(yr.stack_tn) #stack list of rasters
@@ -47,9 +47,9 @@ yr.stack_tn <- stack(yr.stack_tn) #stack list of rasters
 #total precipitation
 yr.stack_p <- lapply(1:nrow(ym), function(x) {
   if(ym$Var2[x] == 2021 & (ym$Var1[x] %in% c("10","11","12"))) {
-    raster(paste('~/PRISM_monthly/', ym[x,"Var2"],'/PRISM_ppt_provisional_4kmM3_', ym[x,"Var2"], ym[x,"Var1"],'_bil.bil',sep=""))
+    raster(paste('../data/PRISM_monthly/', ym[x,"Var2"],'/PRISM_ppt_provisional_4kmM3_', ym[x,"Var2"], ym[x,"Var1"],'_bil.bil',sep=""))
   } else {
-    raster(paste('~/PRISM_monthly/', ym[x,"Var2"],'/PRISM_ppt_stable_4kmM3_', ym[x,"Var2"], ym[x,"Var1"],'_bil.bil',sep="")) 
+    raster(paste('../data/PRISM_monthly/', ym[x,"Var2"],'/PRISM_ppt_stable_4kmM3_', ym[x,"Var2"], ym[x,"Var1"],'_bil.bil',sep="")) 
   }
 })
 yr.stack_p <- stack(yr.stack_p) #stack list of rasters
@@ -170,7 +170,7 @@ tp_norm <- mclapply(1:length(conus), function(x) { #for each hexagon in CONUS, c
              t(ppt.m), t(pptsd.m))
   
 }, mc.cores = detectCores())
-saveRDS(do.call(rbind.data.frame, tp_norm), "~/temp.precip_norm_hex.rds")
+saveRDS(do.call(rbind.data.frame, tp_norm), "../data/temp.precip_norm_hex.rds")
 
 
 ### Anomalies in seasonal and monthly amounts
@@ -179,94 +179,94 @@ saveRDS(do.call(rbind.data.frame, tp_norm), "~/temp.precip_norm_hex.rds")
 tp_ms <- lapply(1999:2021, function(x) { #for each year
   
   yr.stack_t <- if(x != 2021) { #mean temperature for that year
-    stack(raster(paste('~/PRISM_monthly/', x-1,'/PRISM_tmean_stable_4kmM3_', x-1, '12_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmean_stable_4kmM3_', x, '01_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmean_stable_4kmM3_', x, '02_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmean_stable_4kmM3_', x, '03_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmean_stable_4kmM3_', x, '04_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmean_stable_4kmM3_', x, '05_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmean_stable_4kmM3_', x, '06_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmean_stable_4kmM3_', x, '07_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmean_stable_4kmM3_', x, '08_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmean_stable_4kmM3_', x, '09_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmean_stable_4kmM3_', x, '10_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmean_stable_4kmM3_', x, '11_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmean_stable_4kmM3_', x, '12_bil.bil',sep="")))
+    stack(raster(paste('../data/PRISM_monthly/', x-1,'/PRISM_tmean_stable_4kmM3_', x-1, '12_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmean_stable_4kmM3_', x, '01_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmean_stable_4kmM3_', x, '02_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmean_stable_4kmM3_', x, '03_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmean_stable_4kmM3_', x, '04_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmean_stable_4kmM3_', x, '05_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmean_stable_4kmM3_', x, '06_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmean_stable_4kmM3_', x, '07_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmean_stable_4kmM3_', x, '08_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmean_stable_4kmM3_', x, '09_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmean_stable_4kmM3_', x, '10_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmean_stable_4kmM3_', x, '11_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmean_stable_4kmM3_', x, '12_bil.bil',sep="")))
     
   } else {
-    stack(raster(paste('~/PRISM_monthly/', x-1,'/PRISM_tmean_stable_4kmM3_', x-1, '12_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmean_stable_4kmM3_', x, '01_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmean_stable_4kmM3_', x, '02_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmean_stable_4kmM3_', x, '03_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmean_stable_4kmM3_', x, '04_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmean_stable_4kmM3_', x, '05_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmean_stable_4kmM3_', x, '06_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmean_stable_4kmM3_', x, '07_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmean_stable_4kmM3_', x, '08_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmean_stable_4kmM3_', x, '09_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmean_provisional_4kmM3_', x, '10_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmean_provisional_4kmM3_', x, '11_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmean_provisional_4kmM3_', x, '12_bil.bil',sep="")))
+    stack(raster(paste('../data/PRISM_monthly/', x-1,'/PRISM_tmean_stable_4kmM3_', x-1, '12_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmean_stable_4kmM3_', x, '01_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmean_stable_4kmM3_', x, '02_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmean_stable_4kmM3_', x, '03_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmean_stable_4kmM3_', x, '04_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmean_stable_4kmM3_', x, '05_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmean_stable_4kmM3_', x, '06_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmean_stable_4kmM3_', x, '07_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmean_stable_4kmM3_', x, '08_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmean_stable_4kmM3_', x, '09_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmean_provisional_4kmM3_', x, '10_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmean_provisional_4kmM3_', x, '11_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmean_provisional_4kmM3_', x, '12_bil.bil',sep="")))
   }
   
   yr.stack_p <- if(x != 2021) { #total precipitation for that year
-    stack(raster(paste('~/PRISM_monthly/', x-1,'/PRISM_ppt_stable_4kmM3_', x-1, '12_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_ppt_stable_4kmM3_', x, '01_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_ppt_stable_4kmM3_', x, '02_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_ppt_stable_4kmM3_', x, '03_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_ppt_stable_4kmM3_', x, '04_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_ppt_stable_4kmM3_', x, '05_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_ppt_stable_4kmM3_', x, '06_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_ppt_stable_4kmM3_', x, '07_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_ppt_stable_4kmM3_', x, '08_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_ppt_stable_4kmM3_', x, '09_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_ppt_stable_4kmM3_', x, '10_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_ppt_stable_4kmM3_', x, '11_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_ppt_stable_4kmM3_', x, '12_bil.bil',sep="")))
+    stack(raster(paste('../data/PRISM_monthly/', x-1,'/PRISM_ppt_stable_4kmM3_', x-1, '12_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_ppt_stable_4kmM3_', x, '01_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_ppt_stable_4kmM3_', x, '02_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_ppt_stable_4kmM3_', x, '03_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_ppt_stable_4kmM3_', x, '04_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_ppt_stable_4kmM3_', x, '05_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_ppt_stable_4kmM3_', x, '06_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_ppt_stable_4kmM3_', x, '07_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_ppt_stable_4kmM3_', x, '08_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_ppt_stable_4kmM3_', x, '09_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_ppt_stable_4kmM3_', x, '10_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_ppt_stable_4kmM3_', x, '11_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_ppt_stable_4kmM3_', x, '12_bil.bil',sep="")))
   } else {
-    stack(raster(paste('~/PRISM_monthly/', x-1,'/PRISM_ppt_stable_4kmM3_', x-1, '12_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_ppt_stable_4kmM3_', x, '01_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_ppt_stable_4kmM3_', x, '02_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_ppt_stable_4kmM3_', x, '03_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_ppt_stable_4kmM3_', x, '04_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_ppt_stable_4kmM3_', x, '05_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_ppt_stable_4kmM3_', x, '06_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_ppt_stable_4kmM3_', x, '07_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_ppt_stable_4kmM3_', x, '08_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_ppt_stable_4kmM3_', x, '09_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_ppt_provisional_4kmM3_', x, '10_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_ppt_provisional_4kmM3_', x, '11_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_ppt_provisional_4kmM3_', x, '12_bil.bil',sep="")))
+    stack(raster(paste('../data/PRISM_monthly/', x-1,'/PRISM_ppt_stable_4kmM3_', x-1, '12_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_ppt_stable_4kmM3_', x, '01_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_ppt_stable_4kmM3_', x, '02_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_ppt_stable_4kmM3_', x, '03_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_ppt_stable_4kmM3_', x, '04_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_ppt_stable_4kmM3_', x, '05_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_ppt_stable_4kmM3_', x, '06_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_ppt_stable_4kmM3_', x, '07_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_ppt_stable_4kmM3_', x, '08_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_ppt_stable_4kmM3_', x, '09_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_ppt_provisional_4kmM3_', x, '10_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_ppt_provisional_4kmM3_', x, '11_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_ppt_provisional_4kmM3_', x, '12_bil.bil',sep="")))
   }
   
   yr.stack_t2 <- if(x != 2021) { #min temperature for that year
-    stack(raster(paste('~/PRISM_monthly/', x-1,'/PRISM_tmin_stable_4kmM3_', x-1, '12_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmin_stable_4kmM3_', x, '01_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmin_stable_4kmM3_', x, '02_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmin_stable_4kmM3_', x, '03_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmin_stable_4kmM3_', x, '04_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmin_stable_4kmM3_', x, '05_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmin_stable_4kmM3_', x, '06_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmin_stable_4kmM3_', x, '07_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmin_stable_4kmM3_', x, '08_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmin_stable_4kmM3_', x, '09_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmin_stable_4kmM3_', x, '10_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmin_stable_4kmM3_', x, '11_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmin_stable_4kmM3_', x, '12_bil.bil',sep="")))
+    stack(raster(paste('../data/PRISM_monthly/', x-1,'/PRISM_tmin_stable_4kmM3_', x-1, '12_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmin_stable_4kmM3_', x, '01_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmin_stable_4kmM3_', x, '02_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmin_stable_4kmM3_', x, '03_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmin_stable_4kmM3_', x, '04_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmin_stable_4kmM3_', x, '05_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmin_stable_4kmM3_', x, '06_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmin_stable_4kmM3_', x, '07_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmin_stable_4kmM3_', x, '08_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmin_stable_4kmM3_', x, '09_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmin_stable_4kmM3_', x, '10_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmin_stable_4kmM3_', x, '11_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmin_stable_4kmM3_', x, '12_bil.bil',sep="")))
   } else {
-    stack(raster(paste('~/PRISM_monthly/', x-1,'/PRISM_tmin_stable_4kmM3_', x-1, '12_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmin_stable_4kmM3_', x, '01_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmin_stable_4kmM3_', x, '02_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmin_stable_4kmM3_', x, '03_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmin_stable_4kmM3_', x, '04_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmin_stable_4kmM3_', x, '05_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmin_stable_4kmM3_', x, '06_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmin_stable_4kmM3_', x, '07_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmin_stable_4kmM3_', x, '08_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmin_stable_4kmM3_', x, '09_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmin_provisional_4kmM3_', x, '10_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmin_provisional_4kmM3_', x, '11_bil.bil',sep="")),
-          raster(paste('~/PRISM_monthly/', x,'/PRISM_tmin_provisional_4kmM3_', x, '12_bil.bil',sep="")))
+    stack(raster(paste('../data/PRISM_monthly/', x-1,'/PRISM_tmin_stable_4kmM3_', x-1, '12_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmin_stable_4kmM3_', x, '01_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmin_stable_4kmM3_', x, '02_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmin_stable_4kmM3_', x, '03_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmin_stable_4kmM3_', x, '04_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmin_stable_4kmM3_', x, '05_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmin_stable_4kmM3_', x, '06_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmin_stable_4kmM3_', x, '07_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmin_stable_4kmM3_', x, '08_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmin_stable_4kmM3_', x, '09_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmin_provisional_4kmM3_', x, '10_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmin_provisional_4kmM3_', x, '11_bil.bil',sep="")),
+          raster(paste('../data/PRISM_monthly/', x,'/PRISM_tmin_provisional_4kmM3_', x, '12_bil.bil',sep="")))
   }
   
   print(x) #monitor progress
@@ -314,11 +314,11 @@ tp_ms <- lapply(1999:2021, function(x) { #for each year
   
   do.call(rbind.data.frame, g) #all hexes for that year together
 }) 
-saveRDS(do.call(rbind.data.frame, tp_ms),"~/temp.precip_ms_hex.rds") #all years into single df, saved as R object
+saveRDS(do.call(rbind.data.frame, tp_ms),"../data/temp.precip_ms_hex.rds") #all years into single df, saved as R object
 
 
 ## Lag variables by a year -> useful when fitting AR(1) Climate candidate models
-#tp_ms <- readRDS("~/temp.precip_ms_hex.rds")
+#tp_ms <- readRDS("../data/temp.precip_ms_hex.rds")
 lags <- tp_ms
 lags$year <- lags$year + 1 #bump year by one
 
@@ -326,13 +326,13 @@ lnames <- names(lags)[grep("tmean|tmin|ppt", names(lags))]
 names(lags)[grep("tmean|tmin|ppt", names(lags))] <- paste("l.1y", lnames, sep="_") #append l.1_y to vars (lag of 1 year)
 
 tpa2 <- merge(tp_ms, lags, by=c("fips","year")) #merge back together
-saveRDS(tpa2, "~/temp.precip_ms_hex2.rds")
+saveRDS(tpa2, "../data/temp.precip_ms_hex2.rds")
 
 
 ## Calculate normalized anomalies (subtract mean / SD) for month and season
-dat.av <- readRDS("~/temp.precip_norm_hex.rds") #long term mean
+dat.av <- readRDS("../data/temp.precip_norm_hex.rds") #long term mean
 
-dat <- readRDS("~/temp.precip_ms_hex2.rds") #monthly and seasonal data (current and previous year)
+dat <- readRDS("../data/temp.precip_ms_hex2.rds") #monthly and seasonal data (current and previous year)
 dat.m <- dat[,-grep("w|sp|su|.f", names(dat))] #monthly tmean, ppt per county (that year and previous)
 dat.s <- dat[,grep("fips|year|w|sp|su|f", names(dat))] #seasonal mean tmean, ppt per county (that year and previous)
 
@@ -346,7 +346,7 @@ std.tmin_l <- (dat.m[,51:62] - dat.m[,99:110])/dat.m[,111:122] #(obs - mean)/SD 
 std.ppt_l <- (dat.m[,63:74] - dat.m[,123:134])/dat.m[,135:146] #(obs - mean)/SD for previous year ppt
 std.dat.m <- cbind(dat.m[,c("fips","year")], std.tmean, std.tmin, std.ppt, std.tmean_l, std.tmin_l, std.ppt_l) #bind back together with fips and year
 names(std.dat.m)[-c(1:2)] <- paste(stringr::str_split(names(std.dat.m)[-c(1:2)], ".x", simplify = T)[,1], "_std", sep="") #append for clarity that values standardized
-saveRDS(std.dat.m, "~/prism_temp.precip_m_std_hex.rds")
+saveRDS(std.dat.m, "../data/prism_temp.precip_m_std_hex.rds")
 
 #season
 dat.s <- merge(dat.s, dat.av[,c(1,grep(".w|.sp|.su|.f", names(dat.av)))], by="fips") #merge seasonal avs/SD
@@ -358,4 +358,4 @@ std.tmin_l <- (dat.s[,19:22] - dat.s[,c(35,37,39,41)])/dat.s[,c(36,38,40,42)] #(
 std.ppt_l <- (dat.s[,23:26] - dat.s[,c(43,45,47,49)])/dat.s[,c(44,46,48,50)] #(obs - mean)/SD for previous year ppt
 std.dat.s <- cbind(dat.s[,c("fips","year")], std.tmean, std.tmin, std.ppt, std.tmean_l, std.tmin_l, std.ppt_l) #bind back together with fips and year
 names(std.dat.s)[-c(1:2)] <- paste(stringr::str_split(names(std.dat.s)[-c(1:2)], ".x", simplify = T)[,1], "_std", sep="") #append for clarity that values standardized
-saveRDS(std.dat.s, "~/prism_temp.precip_s_std_hex.rds")
+saveRDS(std.dat.s, "../data/prism_temp.precip_s_std_hex.rds")
