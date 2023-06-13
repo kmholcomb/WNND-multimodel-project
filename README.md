@@ -1,5 +1,5 @@
 ## Prediction of West Nile virus disease by climate region in the United States (2015-2020)
-This repository contains R scripts for fitting and scoring models to predict annual West Nile virus neuroinvasive disease (WNND) cases in [climate regions](https://www.ncei.noaa.gov/access/monitoring/reference-maps/us-climate-regions) of the United States (2015-2021). We also used machine learning models to identify important regional climate/weather factors for WNND prediction, using normalized anomalies in seasonal or monthly temperature and precipitation. We fitted ten models, ranging in complexity, to predict annual WNND cases across a hexagonal grid. 
+This repository contains R scripts for fitting and scoring models to predict annual West Nile virus neuroinvasive disease (WNND) cases in [climate regions](https://www.ncei.noaa.gov/access/monitoring/reference-maps/us-climate-regions) of the United States (2015-2021). We also used machine learning models to identify important regional climate/weather factors for WNND prediction, using normalized anomalies in seasonal or monthly temperature and precipitation. We fitted eleven models, ranging in complexity, to predict annual WNND cases across a hexagonal grid. 
 
 ### Repository structure
 All included code can be run in R, with the required packages indicated at the top of each script. Analyses were performed in RStudio (v. 2022.07.1+554) using R (v. 4.2.0) on a 64-bit Windows 10 laptop (16 GB RAM, 11th Gen Intel(R) Core(TM) i7-1185G7 @ 3.0GHz processor) or using R (v. 4.2.0) through a compute cluster environment (33 compute nodes with 44 cores each running at 2.8Ghz & 384 GB RAM each). 
@@ -17,13 +17,14 @@ The following data sources were used in the analysis and are publically availabl
 We created a grid over the contiguous United States (equal area projection) using 200 km diameter hexagons (~34,640 km^2 area). Code for making the grid and assigning climate regions to hexagons are in the _hex_grids.R_ script.
 
 ### Model fitting and scoring
-Model fitting, prediction, and calculation of logarithmic scores for each of the models are found in the following scripts. Scripts often use multi-core computation, but comments indicate how to adjust for using a single core.
+Model fitting, prediction, and calculation of logarithmic scores for each of the models are found in the following scripts. Scripts often use multi-core computation, but comments within each script indicate how to adjust for using a single core.
 - Always Absent model: _AA_hex.R_
 - Negative binomial models (hex, region, and national scales): _NB_models.R_
 - Autoregressive model (AR(1)): _clim_ar1_hex.R_
 - Autoregressive climate model (AR(1) Climate): _clim_ar1_hex.R_
 - Machine learning models (random forest and neural network models): _NN_hex_month.RMD_, _NN_hex_season.RMD_, _RF_hex_month.RMD_, and _RF_hex_season.RMD_
+- Median ensemble (used all of the above models except the Always Absent model): _comparison_models_hex.R_
 
 Comparison of logarithmic scores between models is outlined in the _comparison_models_hex.R_ script.
 
-Bayesian regression analyses used to statisitically identify differences in model performance are illustrated in the _regression_hex.R_ script.
+Bayesian regression analyses used to statisitically identify differences in model performance by region and across regions are illustrated in the _regression_hex.R_ script.
