@@ -27,4 +27,4 @@ Model fitting, prediction, and calculation of logarithmic scores for each of the
 
 Comparison of logarithmic scores between models is outlined in the _comparison_models_hex.R_ script.
 
-Bayesian regression analyses used to statisitically identify differences in model performance by region and across regions are illustrated in the _regression_hex.R_ script.
+Bayesian regression analyses used to statistically identify differences in model performance by region and across regions are illustrated in the _regression_hex.R_ script.
