@@ -1,6 +1,8 @@
 ## Prediction of West Nile virus neuroinvasive disease by climate region in the United States (2015-2020)
 This repository contains R scripts for fitting and scoring models to predict annual West Nile virus neuroinvasive disease (WNND) cases in [climate regions](https://www.ncei.noaa.gov/access/monitoring/reference-maps/us-climate-regions) of the United States (2015-2021). We also used machine learning models to identify important regional climate/weather factors for WNND prediction, using normalized anomalies in seasonal or monthly temperature and precipitation. We fitted eleven models, ranging in complexity, to predict annual WNND cases across a hexagonal grid. 
 
+<a href="https://zenodo.org/badge/latestdoi/648680245"><img src="https://zenodo.org/badge/648680245.svg" alt="DOI"></a>
+
 ### Repository structure
 All included code can be run in R, with the required packages indicated at the top of each script. Analyses were performed in RStudio (v. 2022.07.1+554) using R (v. 4.2.0) on a 64-bit Windows 10 laptop (16 GB RAM, 11th Gen Intel(R) Core(TM) i7-1185G7 @ 3.0GHz processor) or using R (v. 4.2.0) through a compute cluster environment (33 compute nodes with 44 cores each running at 2.8Ghz & 384 GB RAM each). 
 
