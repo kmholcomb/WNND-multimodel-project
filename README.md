@@ -1,4 +1,4 @@
-## Prediction of West Nile virus disease by climate region in the United States (2015-2020)
+## Prediction of West Nile virus neuroinvasive disease by climate region in the United States (2015-2020)
 This repository contains R scripts for fitting and scoring models to predict annual West Nile virus neuroinvasive disease (WNND) cases in [climate regions](https://www.ncei.noaa.gov/access/monitoring/reference-maps/us-climate-regions) of the United States (2015-2021). We also used machine learning models to identify important regional climate/weather factors for WNND prediction, using normalized anomalies in seasonal or monthly temperature and precipitation. We fitted eleven models, ranging in complexity, to predict annual WNND cases across a hexagonal grid. 
 
 ### Repository structure
