@@ -1,6 +1,6 @@
 ###
 # Author: Karen Holcomb
-# Last Updated: June 8, 2023
+# Last Updated: Sept 1, 2023
 ##
 # Fit GLM models with Stan to compare model performance
 #  using logarithmic score by hexagon and year per model, WNNV history
@@ -51,7 +51,7 @@ ls_all <- readRDS("../data/sup_cases_regdat.rds") %>%
          obs_cases = tot_count > 0)
 
 # Model performance overall
-gamma_log_mod <- stan_glm(sup ~ mod, data = ls_all, family = Gamma(link = "log"), chains = 4, iter = 1000, cores = 4)
+gamma_log_mod <- stan_glm(sup ~ mod, data = ls_all, family = Gamma(link = "log"), chains = 4, iter = 2000, warmup = 500, cores = 4)
 
 # pairwise comparisons of model performance
 comps <- as.data.frame(contrast(emmeans(gamma_log_mod, ~mod), method = "pairwise"))
@@ -92,7 +92,7 @@ toplots2 <- plot_grid(emmplot, sup_case, nrow = 1, rel_widths = c(0.9, 1), label
 # Model performance based on model, historical cases, and observed cases
 # Note: ran this stan model on a cluster, took ~2hrs
 gamma_log2 <- stan_glm(sup ~ lcases + mod*hist_cases*obs_cases, data = ls_all,
-                       family = Gamma(link = "log"), cores = 2, chains = 4, iter = 1000)
+                       family = Gamma(link = "log"), cores = 2, chains = 4, iter = 2000, warmup = 500)
 
 nd = expand.grid(mod = unique(gamma_log2$data$mod), lcases = log(c(0, 1, 5)+1), hist_cases = c(TRUE, FALSE))
 nd2 = nd %>%  mutate(obs_cases = lcases > 0)
@@ -129,7 +129,7 @@ ggsave("mod_comps.tiff" ,
 
 # Model performance by region
 gamma_log_reg <- stan_glm(sup ~ mod * clim.regn, data = ls_all, family = Gamma(link = "log"), chains = 4, 
-                          iter = 1000, cores = 4)
+                          iter = 2000, warmup = 500, cores = 4)
 cr_pairs <- pairs(emmeans(gamma_log_reg, ~mod*clim.regn), by = "clim.regn")
 
 df_regn <- do.call(rbind.data.frame,
